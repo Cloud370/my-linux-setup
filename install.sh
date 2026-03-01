@@ -8,17 +8,25 @@ source "$REPO_DIR/lib/crypto.sh"
 # ── Discovery ─────────────────────────────────────────────────
 
 discover_modules() {
-    for setup in "$REPO_DIR"/configs/*/setup.sh; do
-        [ -f "$setup" ] || continue
-        basename "$(dirname "$setup")"
+    local seen=""
+    for f in "$REPO_DIR"/configs/*/setup.sh "$REPO_DIR"/configs/*/setup.sh.enc; do
+        [ -f "$f" ] || continue
+        local name
+        name="$(basename "$(dirname "$f")")"
+        case "$seen" in *"|$name|"*) continue ;; esac
+        seen="${seen}|$name|"
+        echo "$name"
     done
 }
 
 get_description() {
     local name="$1"
     local file="$REPO_DIR/configs/$name/setup.sh"
-    [ -f "$file" ] || return
-    sed -n 's/^# Description: *//p' "$file" | head -1
+    if [ -f "$file" ]; then
+        sed -n 's/^# Description: *//p' "$file" | head -1
+    elif [ -f "${file}.enc" ]; then
+        echo "[encrypted]"
+    fi
 }
 
 # ── Install ───────────────────────────────────────────────────
@@ -26,11 +34,24 @@ get_description() {
 install_item() {
     local name="$1"
     local setup="$REPO_DIR/configs/$name/setup.sh"
+    local enc="${setup}.enc"
 
-    if [ ! -f "$setup" ]; then
+    if [ ! -f "$setup" ] && [ ! -f "$enc" ]; then
         error "Not found: '${_BOLD}$name${_NC}'"
         error "Run ${_BOLD}./install.sh --list${_NC} to see available items"
         return 1
+    fi
+
+    # Decrypt setup.sh if only .enc exists
+    if [ ! -f "$setup" ] && [ -f "$enc" ]; then
+        local pass
+        pass="$(_get_password decrypt)"
+        info "Decrypting ${name}/setup.sh ..."
+        if ! _decrypt_file "$enc" "$setup" "$pass"; then
+            error "Decryption failed — wrong password?"
+            _SECRET_PASS=""
+            return 1
+        fi
     fi
 
     local desc
