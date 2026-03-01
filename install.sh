@@ -3,18 +3,19 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$REPO_DIR/lib/utils.sh"
+source "$REPO_DIR/lib/crypto.sh"
 
 # ── Discovery ─────────────────────────────────────────────────
 
-# Modules: directories containing setup.sh
+# Modules: configs/*/setup.sh
 discover_modules() {
-    for setup in "$REPO_DIR"/*/setup.sh; do
+    for setup in "$REPO_DIR"/configs/*/setup.sh; do
         [ -f "$setup" ] || continue
         basename "$(dirname "$setup")"
     done
 }
 
-# Scripts: executable .sh files in scripts/
+# Scripts: scripts/*.sh
 discover_scripts() {
     for script in "$REPO_DIR"/scripts/*.sh; do
         [ -f "$script" ] || continue
@@ -22,18 +23,16 @@ discover_scripts() {
     done
 }
 
-# Unified list: all installable items (modules + scripts)
 discover_all() {
     discover_modules
     discover_scripts
 }
 
 get_description() {
-    local name="$1"
-    local file
+    local name="$1" file=""
 
-    if [ -f "$REPO_DIR/$name/setup.sh" ]; then
-        file="$REPO_DIR/$name/setup.sh"
+    if [ -f "$REPO_DIR/configs/$name/setup.sh" ]; then
+        file="$REPO_DIR/configs/$name/setup.sh"
     elif [ -f "$REPO_DIR/scripts/$name.sh" ]; then
         file="$REPO_DIR/scripts/$name.sh"
     else
@@ -45,7 +44,7 @@ get_description() {
 
 get_type() {
     local name="$1"
-    if [ -f "$REPO_DIR/$name/setup.sh" ]; then
+    if [ -f "$REPO_DIR/configs/$name/setup.sh" ]; then
         echo "module"
     elif [ -f "$REPO_DIR/scripts/$name.sh" ]; then
         echo "script"
@@ -72,8 +71,8 @@ install_item() {
 
     case "$type" in
         module)
-            MODULE_DIR="$REPO_DIR/$name"
-            source "$REPO_DIR/$name/setup.sh"
+            MODULE_DIR="$REPO_DIR/configs/$name"
+            source "$REPO_DIR/configs/$name/setup.sh"
             ;;
         script)
             bash "$REPO_DIR/scripts/$name.sh"
@@ -104,7 +103,6 @@ interactive() {
         type="$(get_type "$name")"
         desc="$(get_description "$name")"
 
-        # Section header when type changes
         if [ "$type" != "$prev_type" ]; then
             [ -n "$prev_type" ] && echo ""
             case "$type" in
@@ -189,20 +187,22 @@ usage() {
   ${_BOLD}Usage:${_NC}  ./install.sh [options] [name ...]
 
   ${_BOLD}Options:${_NC}
-    -a, --all     Install all modules and scripts
-    -l, --list    List available modules and scripts
-    -h, --help    Show this help
+    -a, --all          Install all modules and scripts
+    -l, --list         List available modules and scripts
+    -p, --password P   Provide password for encrypted configs (skip prompt)
+    -h, --help         Show this help
 
   ${_BOLD}Examples:${_NC}
-    ./install.sh                   Interactive mode
-    ./install.sh tmux              Install a module
-    ./install.sh example-install-docker   Run a script
-    ./install.sh --all             Install everything
+    ./install.sh                          Interactive mode
+    ./install.sh tmux                     Install a module
+    ./install.sh -p mypass --all          Install all, decrypt with password
+    ./install.sh secret add <file>        Encrypt a config file
+    ./install.sh -p mypass secret decrypt Decrypt all secrets
 
   ${_BOLD}Remote (curl):${_NC}
     bash <(curl -fsSL https://raw.githubusercontent.com/Cloud370/my-linux-setup/main/bootstrap.sh)
-    bash <(curl -fsSL https://raw.githubusercontent.com/Cloud370/my-linux-setup/main/bootstrap.sh) --all
-    bash <(curl -fsSL https://raw.githubusercontent.com/Cloud370/my-linux-setup/main/scripts/xxx.sh)
+    bash <(curl -fsSL .../bootstrap.sh) -p mypass --all
+    bash <(curl -fsSL .../scripts/xxx.sh)
 
 EOF
 }
@@ -210,6 +210,14 @@ EOF
 # ── Main ──────────────────────────────────────────────────────
 
 main() {
+    # Parse global options
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -p|--password) _SECRET_PASS="${2:?Password required after -p}"; shift 2 ;;
+            *)  break ;;
+        esac
+    done
+
     if [ $# -eq 0 ]; then
         interactive
         return
@@ -218,6 +226,7 @@ main() {
     case "$1" in
         -h|--help)  usage ;;
         -l|--list)  list_items ;;
+        secret)     shift; cmd_secret "$@" ;;
         -a|--all)
             local items=()
             while IFS= read -r item; do
