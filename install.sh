@@ -7,7 +7,6 @@ source "$REPO_DIR/lib/crypto.sh"
 
 # ── Discovery ─────────────────────────────────────────────────
 
-# Modules: configs/*/setup.sh
 discover_modules() {
     for setup in "$REPO_DIR"/configs/*/setup.sh; do
         [ -f "$setup" ] || continue
@@ -15,50 +14,20 @@ discover_modules() {
     done
 }
 
-# Scripts: scripts/*.sh
-discover_scripts() {
-    for script in "$REPO_DIR"/scripts/*.sh; do
-        [ -f "$script" ] || continue
-        basename "$script" .sh
-    done
-}
-
-discover_all() {
-    discover_modules
-    discover_scripts
-}
-
 get_description() {
-    local name="$1" file=""
-
-    if [ -f "$REPO_DIR/configs/$name/setup.sh" ]; then
-        file="$REPO_DIR/configs/$name/setup.sh"
-    elif [ -f "$REPO_DIR/scripts/$name.sh" ]; then
-        file="$REPO_DIR/scripts/$name.sh"
-    else
-        return
-    fi
-
-    sed -n 's/^# Description: *//p' "$file" | head -1
-}
-
-get_type() {
     local name="$1"
-    if [ -f "$REPO_DIR/configs/$name/setup.sh" ]; then
-        echo "module"
-    elif [ -f "$REPO_DIR/scripts/$name.sh" ]; then
-        echo "script"
-    fi
+    local file="$REPO_DIR/configs/$name/setup.sh"
+    [ -f "$file" ] || return
+    sed -n 's/^# Description: *//p' "$file" | head -1
 }
 
 # ── Install ───────────────────────────────────────────────────
 
 install_item() {
     local name="$1"
-    local type
-    type="$(get_type "$name")"
+    local setup="$REPO_DIR/configs/$name/setup.sh"
 
-    if [ -z "$type" ]; then
+    if [ ! -f "$setup" ]; then
         error "Not found: '${_BOLD}$name${_NC}'"
         error "Run ${_BOLD}./install.sh --list${_NC} to see available items"
         return 1
@@ -69,15 +38,8 @@ install_item() {
     echo ""
     echo -e "  ${_CYAN}▸${_NC} ${_BOLD}${name}${_NC}  ${_DIM}${desc}${_NC}"
 
-    case "$type" in
-        module)
-            MODULE_DIR="$REPO_DIR/configs/$name"
-            source "$REPO_DIR/configs/$name/setup.sh"
-            ;;
-        script)
-            bash "$REPO_DIR/scripts/$name.sh"
-            ;;
-    esac
+    MODULE_DIR="$REPO_DIR/configs/$name"
+    source "$setup"
 }
 
 # ── Interactive mode ──────────────────────────────────────────
@@ -86,33 +48,21 @@ interactive() {
     local items=()
     while IFS= read -r item; do
         items+=("$item")
-    done < <(discover_all)
+    done < <(discover_modules)
 
     if [ ${#items[@]} -eq 0 ]; then
-        warn "No modules or scripts found"; return
+        warn "No modules found"; return
     fi
 
     echo ""
     echo -e "  ${_BOLD}my-linux-setup${_NC}  ${_DIM}— interactive installer${_NC}"
     echo ""
 
-    local prev_type=""
     for i in "${!items[@]}"; do
         local name="${items[$i]}"
-        local type desc
-        type="$(get_type "$name")"
+        local desc
         desc="$(get_description "$name")"
-
-        if [ "$type" != "$prev_type" ]; then
-            [ -n "$prev_type" ] && echo ""
-            case "$type" in
-                module) echo -e "  ${_DIM}── Modules (config symlinks) ──${_NC}" ;;
-                script) echo -e "  ${_DIM}── Scripts (one-off commands) ──${_NC}" ;;
-            esac
-            prev_type="$type"
-        fi
-
-        printf "  ${_CYAN}%d)${_NC}  %-20s ${_DIM}%s${_NC}\n" $((i + 1)) "$name" "$desc"
+        printf "  ${_CYAN}%d)${_NC}  %-15s ${_DIM}%s${_NC}\n" $((i + 1)) "$name" "$desc"
     done
 
     echo ""
@@ -155,28 +105,19 @@ list_items() {
     local items=()
     while IFS= read -r item; do
         items+=("$item")
-    done < <(discover_all)
+    done < <(discover_modules)
 
     if [ ${#items[@]} -eq 0 ]; then
-        warn "No modules or scripts found"; return
+        warn "No modules found"; return
     fi
 
-    local prev_type=""
+    echo ""
+    echo -e "  ${_BOLD}Available modules:${_NC}"
+    echo ""
     for name in "${items[@]}"; do
-        local type desc
-        type="$(get_type "$name")"
+        local desc
         desc="$(get_description "$name")"
-
-        if [ "$type" != "$prev_type" ]; then
-            echo ""
-            case "$type" in
-                module) echo -e "  ${_BOLD}Modules${_NC}  ${_DIM}(config symlinks)${_NC}" ;;
-                script) echo -e "  ${_BOLD}Scripts${_NC}  ${_DIM}(standalone, also curl-able)${_NC}" ;;
-            esac
-            prev_type="$type"
-        fi
-
-        printf "    ${_CYAN}%-20s${_NC} %s\n" "$name" "$desc"
+        printf "    ${_CYAN}%-15s${_NC} %s\n" "$name" "$desc"
     done
     echo ""
 }
@@ -187,22 +128,23 @@ usage() {
   ${_BOLD}Usage:${_NC}  ./install.sh [options] [name ...]
 
   ${_BOLD}Options:${_NC}
-    -a, --all          Install all modules and scripts
-    -l, --list         List available modules and scripts
+    -a, --all          Install all modules
+    -l, --list         List available modules
     -p, --password P   Provide password for encrypted configs (skip prompt)
     -h, --help         Show this help
 
   ${_BOLD}Examples:${_NC}
     ./install.sh                          Interactive mode
-    ./install.sh tmux                     Install a module
-    ./install.sh -p mypass --all          Install all, decrypt with password
+    ./install.sh tmux                     Install a config module
+    ./install.sh nvm docker               Install tools
+    ./install.sh -p mypass --all          Install all with password
     ./install.sh secret add <file>        Encrypt a config file
     ./install.sh -p mypass secret decrypt Decrypt all secrets
 
-  ${_BOLD}Remote (curl):${_NC}
+  ${_BOLD}Remote:${_NC}
     bash <(curl -fsSL https://raw.githubusercontent.com/Cloud370/my-linux-setup/main/bootstrap.sh)
+    bash <(curl -fsSL .../bootstrap.sh) nvm docker
     bash <(curl -fsSL .../bootstrap.sh) -p mypass --all
-    bash <(curl -fsSL .../scripts/xxx.sh)
 
 EOF
 }
@@ -231,7 +173,7 @@ main() {
             local items=()
             while IFS= read -r item; do
                 items+=("$item")
-            done < <(discover_all)
+            done < <(discover_modules)
             for item in "${items[@]}"; do
                 install_item "$item"
             done

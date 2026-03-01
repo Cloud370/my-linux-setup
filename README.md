@@ -8,110 +8,78 @@ My Linux environment configuration files and scripts.
 # Clone + interactive install
 bash <(curl -fsSL https://raw.githubusercontent.com/Cloud370/my-linux-setup/main/bootstrap.sh)
 
-# Clone + install all
-bash <(curl -fsSL https://raw.githubusercontent.com/Cloud370/my-linux-setup/main/bootstrap.sh) --all
+# Clone + install specific modules
+bash <(curl -fsSL .../bootstrap.sh) tmux nvm docker
 
 # Clone + install all (with password for encrypted configs)
-bash <(curl -fsSL https://raw.githubusercontent.com/Cloud370/my-linux-setup/main/bootstrap.sh) -p <password> --all
+bash <(curl -fsSL .../bootstrap.sh) -p <password> --all
 ```
 
-## Local Usage
+## Usage
 
 ```bash
-./install.sh                    # Interactive mode (prompts for password if needed)
-./install.sh tmux               # Install specific module
-./install.sh --all              # Install everything
-./install.sh -p mypass --all    # Install everything, password via CLI
-./install.sh --list             # List available modules & scripts
+./install.sh                         # Interactive — select from menu
+./install.sh tmux                    # Install one module
+./install.sh nvm docker              # Install multiple modules
+./install.sh --all                   # Install everything
+./install.sh -p mypass --all         # Install all, password via CLI
+./install.sh --list                  # List available modules
 ```
 
-## Standalone Scripts (curl directly)
+## Available Modules
 
-```bash
-# Install nvm + Node.js LTS
-bash <(curl -fsSL https://raw.githubusercontent.com/Cloud370/my-linux-setup/main/scripts/install-nvm.sh)
-
-# Install Docker CE + Compose
-bash <(curl -fsSL https://raw.githubusercontent.com/Cloud370/my-linux-setup/main/scripts/install-docker.sh)
-```
+| Module | Description |
+|--------|-------------|
+| tmux   | Tmux configuration (symlink) |
+| nvm    | Install nvm + Node.js LTS |
+| docker | Install Docker CE + Compose |
 
 ## Structure
 
 ```
-install.sh                      # Installer (CLI + interactive)
-bootstrap.sh                    # curl one-liner entry point
+install.sh              # Installer (CLI + interactive)
+bootstrap.sh            # curl one-liner entry point
 lib/
-  utils.sh                      # Shared helpers
-  crypto.sh                     # Encryption helpers
-configs/                        # Modules — config files
-  tmux/
-    setup.sh                    # link_file / link_secret calls
-    .tmux.conf
-scripts/                        # Standalone scripts
-  install-nvm.sh                # nvm + Node.js
-  install-docker.sh             # Docker CE
+  utils.sh              # Shared helpers
+  crypto.sh             # Encryption helpers
+configs/
+  tmux/setup.sh         # Tmux config
+  nvm/setup.sh          # nvm + Node.js
+  docker/setup.sh       # Docker CE
 ```
 
-## Encrypted Configs (Password)
+## Encrypted Configs
 
-Some config files contain sensitive data. They are stored encrypted in git
-and decrypted at install time with a password. No keys — just a simple password.
-
-### Setup (on your main machine)
+Sensitive files are stored encrypted in git, decrypted with a password at install time.
 
 ```bash
-# 1. Set a password hint (committed to git, visible to anyone)
-./install.sh secret hint "favorite color + birth year"
+# Set a password hint (visible in git)
+./install.sh secret hint "favorite color + year"
 
-# 2. Mark files as secret — encrypts them, gitignores the plaintext
+# Mark a file as secret
 ./install.sh secret add configs/ssh/config
-./install.sh secret add configs/git/.gitconfig-private
 
-# 3. Commit (only .enc files go into git)
-git add -A && git commit -m "add encrypted configs"
+# Re-encrypt after editing
+./install.sh secret encrypt             # interactive
+./install.sh -p mypass secret encrypt   # CLI
+
+# Decrypt on a new machine
+./install.sh secret decrypt             # interactive
+./install.sh -p mypass secret decrypt   # CLI
+
+# Check status
+./install.sh secret status
 ```
 
-### Decrypt (on a new machine)
+In `setup.sh`, use `link_secret` for encrypted files:
 
 ```bash
-# Interactive — shows hint, prompts for password
-./install.sh secret decrypt
-
-# Or via CLI flag — no prompt
-./install.sh -p mypass secret decrypt
-```
-
-### Re-encrypt after editing
-
-```bash
-# After editing a plaintext secret file, re-encrypt before committing
-./install.sh secret encrypt           # interactive
-./install.sh -p mypass secret encrypt  # CLI
-```
-
-### In setup.sh
-
-Use `link_secret` instead of `link_file` for encrypted files:
-
-```bash
-# Description: SSH configuration
-
 link_secret "$MODULE_DIR/config" "$HOME/.ssh/config"
-```
-
-`link_secret` automatically decrypts the `.enc` file if the plaintext
-doesn't exist, then creates the symlink.
-
-### Other secret commands
-
-```bash
-./install.sh secret status    # Show encrypt/decrypt status of all secrets
-./install.sh secret hint      # Show current hint
 ```
 
 ## Adding a Module
 
-Create a directory under `configs/` with a `setup.sh`:
+Create `configs/<name>/setup.sh`:
 
 ```bash
 mkdir configs/zsh
@@ -127,19 +95,3 @@ Available helpers:
 - `link_secret <src> <target>` — decrypt + symlink
 - `copy_file <src> <target>` — copy with auto-backup
 - `run_cmd <desc> <cmd...>` — run and log a command
-
-## Adding a Script
-
-Add a `.sh` file to `scripts/`:
-
-```bash
-cat > scripts/install-something.sh <<'EOF'
-#!/usr/bin/env bash
-# Description: Install something useful
-set -euo pipefail
-
-echo "Installing..."
-EOF
-```
-
-Scripts are auto-discovered by `./install.sh` and can also be curl'd standalone.
