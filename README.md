@@ -19,6 +19,7 @@ bash <(curl -fsSL .../bootstrap.sh) -p <password> --all
 
 ```bash
 ./install.sh                         # Interactive — select from menu
+./install.sh bash                    # Install bash aliases
 ./install.sh tmux                    # Install one module
 ./install.sh nvm docker              # Install multiple modules
 ./install.sh --all                   # Install everything
@@ -30,6 +31,7 @@ bash <(curl -fsSL .../bootstrap.sh) -p <password> --all
 
 | Module | Description |
 |--------|-------------|
+| bash   | Manage `~/.bash_aliases` and add a minimal `~/.bashrc` source block for native `ll` |
 | tmux   | Tmux configuration (symlink) |
 | nvm    | Install nvm + Node.js LTS |
 | docker | Install Docker CE + Compose |
@@ -43,9 +45,22 @@ lib/
   utils.sh              # Shared helpers
   crypto.sh             # Encryption helpers
 configs/
+  bash/setup.sh         # Bash aliases integration
   tmux/setup.sh         # Tmux config
   nvm/setup.sh          # nvm + Node.js
   docker/setup.sh       # Docker CE
+```
+
+## Bash Module
+
+The `bash` module keeps shell changes minimal:
+
+- symlinks the managed `configs/bash/.bash_aliases` file to `~/.bash_aliases`
+- ensures `~/.bashrc` loads `~/.bash_aliases` with one small managed block
+- provides a native `ll` alias based on `ls`, with no `eza`/`exa` dependency
+
+```bash
+./install.sh bash
 ```
 
 ## Encrypted Configs
